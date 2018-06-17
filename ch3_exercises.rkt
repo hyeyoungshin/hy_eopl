@@ -57,11 +57,11 @@
   (lambda (xs)
     (cond
       [(null? xs) '()]
-      [(eqv? (length xs) 1) (parse-arg (car xs))]
+      [(eqv? (length xs) 1) '(parse-arg (car xs))]
       [else ; list of at least length 2
        (cond
-         [(list? (car xs)) (append (primapp-exp (parse-args (car xs)) (parse-args (cdr xs))))]
-         [else (cons (parse-arg (car xs)) (parse-args (cdr xs)))])])))
+         [(list? (car xs)) (append (parse-args (car xs)) (parse-args (cdr xs)))]
+         [else '(primapp-exp (parse-arg (car xs)) (parse-args (cdr xs)))])])))
 
 
 
@@ -70,13 +70,13 @@
 (define parse-arg
   (lambda (x)
     (cond
-      [(number? x) '(lit-exp x)]
+      [(number? x) (lit-exp x)]
       [(symbol? x) (cond
-                     [(eqv? x '+) '(add-prim)]
-                     [(eqv? x '-) '(sub-prim)]
-                     [(eqv? x '*) '(mul-prim)]
-                     [(eqv? x 'add1) '(add1-prim)]
-                     [(eqv? x 'sub1) '(sub1-prim)]
+                     [(eqv? x '+) (add-prim)]
+                     [(eqv? x '-) (sub-prim)]
+                     [(eqv? x '*) (mul-prim)]
+                     [(eqv? x 'add1) (add1-prim)]
+                     [(eqv? x 'sub1) (sub1-prim)]
                      [else (var-exp x)])]
       [else eopl:error])))
 
