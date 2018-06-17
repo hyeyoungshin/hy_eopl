@@ -77,7 +77,7 @@
                      [(eqv? x '*) '(mul-prim)]
                      [(eqv? x 'add1) '(add1-prim)]
                      [(eqv? x 'sub1) '(sub1-prim)]
-                     [else eopl:error])]
+                     [else (var-exp x)])]
       [else eopl:error])))
 
 
