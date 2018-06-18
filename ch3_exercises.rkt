@@ -45,35 +45,27 @@
     (cond
       [(number? x) (lit-exp x)]
       [(symbol? x) (var-exp x)]
-      [(list? x) (SL-to-exp x)]
+      [(list? x) (primapp-exp (sexp-to-prim (car x)) (sexp-to-list (cdr x)))]
       [else eopl:error])))
         
+        
+(define sexp-to-prim
+  (lambda (x)
+    (cond
+      [(eqv? x '+) (add-prim)]
+      [(eqv? x '-) (sub-prim)]
+      [(eqv? x '*) (mul-prim)]
+      [(eqv? x 'add1) (add1-prim)]
+      [(eqv? x 'sub1) (sub1-prim)]
+      [else eopl:error])))
 
-; SL -> Expression
-(define SL-to-exp
-  (lambda (x)
-    (cond
-      [(null? x) eopl:error]
-      [else (cons (primapp-exp (atom-to-prim (car x)) (SL-to-list (cdr x))))])))
-        
-(define atom-to-prim
-  (lambda (x)
-    (cond
-      [(symbol? x) (cond
-                     [(eqv? x '+) (add-prim)]
-                     [(eqv? x '-) (sub-prim)]
-                     [(eqv? x '*) (mul-prim)]
-                     [(eqv? x 'add1) (add1-prim)]
-                     [(eqv? x 'sub1) (sub1-prim)]
-                     [else eopl:error])]
-      [else eopl:error])))
 
 ; List-of Sexpr -> List-of Expression
-(define SL-to-list
+(define sexp-to-list
   (lambda (a)
     (cond
       [(null? a) '()]
-      [else (cons (sexp-to-exp (car a)) (SL-to-list (cdr a)))])))
+      [else (cons (sexp-to-exp (car a)) (sexp-to-list (cdr a)))])))
     
 
 
