@@ -34,61 +34,47 @@
   (sub1-prim))
 
 
-; S-expr -> program
-(define program-to-list
+; Sexp -> Program
+(define sexp-to-program
   (lambda (x)
-    (cond
-      [(number? x) (a-program (lit-exp x))]
-      [(symbol? x) (a-program (var-exp x))]
-      [(list? x) (a-program
-                   (let ([fst (car x)]
-                         [rands (parse-args (cdr x))])
-                     (cond
-                       [(eqv? fst '+) (primapp-exp (add-prim) rands)]
-                       [(eqv? fst '-) (primapp-exp (sub-prim) rands)]
-                       [(eqv? fst '*) (primapp-exp (mul-prim) rands)]
-                       [(eqv? fst 'add1) (primapp-exp (add1-prim) rands)]
-                       [(eqv? fst 'sub1) (primapp-exp (sub1-prim) rands)]
-                       [else eopl:error])))]
-      [else eopl:error])))
+    (a-program (sexp-to-exp x))))
 
-; SL -> List-of expression (or error)
-(define parse-args
-  (lambda (xs)
-    (cond
-      [(null? xs) '()]
-      [(eqv? (length xs) 1) '(parse-arg (car xs))]
-      [else ; list of at least length 2
-       (cond
-         [(list? (car xs)) (append (parse-args (car xs)) (parse-args (cdr xs)))]
-         [else '(primapp-exp (parse-arg (car xs)) (parse-args (cdr xs)))])])))
-
-
-
-
-; Atom -> List-of expression (or error)
-(define parse-arg
+; Sexp -> Expression
+(define sexp-to-exp
   (lambda (x)
     (cond
       [(number? x) (lit-exp x)]
+      [(symbol? x) (var-exp x)]
+      [(list? x) (SL-to-exp x)]
+      [else eopl:error])))
+        
+
+; SL -> Expression
+(define SL-to-exp
+  (lambda (x)
+    (cond
+      [(null? x) eopl:error]
+      [else (cons (primapp-exp (atom-to-prim (car x)) (SL-to-list (cdr x))))])))
+        
+(define atom-to-prim
+  (lambda (x)
+    (cond
       [(symbol? x) (cond
                      [(eqv? x '+) (add-prim)]
                      [(eqv? x '-) (sub-prim)]
                      [(eqv? x '*) (mul-prim)]
                      [(eqv? x 'add1) (add1-prim)]
                      [(eqv? x 'sub1) (sub1-prim)]
-                     [else (var-exp x)])]
+                     [else eopl:error])]
       [else eopl:error])))
 
-
-(define arity-check
-  (lambda (rst n)
-    (let ([l (length rst)]) 
-      (cond
-        [(eqv? n l) rst]
-        [else eopl:error]))))
-      
-
+; List-of Sexpr -> List-of Expression
+(define SL-to-list
+  (lambda (a)
+    (cond
+      [(null? a) '()]
+      [else (cons (sexp-to-exp (car a)) (SL-to-list (cdr a)))])))
+    
 
 
     
