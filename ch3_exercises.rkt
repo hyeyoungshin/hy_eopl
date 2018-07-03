@@ -94,6 +94,57 @@
 ; '(+ (- 3 x) (* (+ 2 x) (add1 5))
 
 
+    
+(define eval-program
+  (lambda (p)
+    (cases program p
+      (a-program (body)
+                 (eval-expression body (init-env))))))
+
+(define eval-expression
+  (lambda (exp env)
+    (cases expression exp
+      (lit-exp (datum) datum)
+      (var-exp (id) (apply-env env id))
+      (primapp-exp (prim rands)
+                   (let ((args (eval-rands rands env)))
+                     (apply-primitive prim args))))))
+
+(define eval-rands
+  (lambda (rands env)
+    (map (lambda (x) (eval-rand x env)) rands)))
+
+(define eval-rand
+  (lambda (rand env)
+    (eval-expression rand env)))
+
+(define apply-primitive
+  (lambda (prim args)
+    (cases primitive prim
+      (add-prim () (+ (car args) (cadr args)))
+      (sub-prim () (- (car args) (cadr args)))
+      (mul-prim () (* (car args) (cadr args)))
+      (add1-prim () (+ (car args) 1))
+      (sub1-prim () (- (car args) 1)))))
+
+(define init-env
+  (lambda ()
+    (extend-env
+     '(x 5)
+     '())))
+
+(define apply-env
+  (lambda (env id)
+    (cond
+      [(null? env) (eopl:error "empty environment")]
+      [else (if (eqv? (car (car env)) id)
+                (car (cdr (car env)))
+                (eopl:error "unbound variable"))])))
+
+(define extend-env
+  (lambda (binding cur-env)
+    (cons binding cur-env)))
+
 
     
 
