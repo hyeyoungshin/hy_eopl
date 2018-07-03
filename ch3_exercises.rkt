@@ -16,6 +16,10 @@
 ; – String
 ; – Symbol
 
+(define true-value?
+  (lambda (x)
+    (not (zero? x))))
+
 (define-datatype program program?
   (a-program (exp expression?)))
 
@@ -26,7 +30,21 @@
    (id symbol?))
   (primapp-exp
    (prim primitive?)
-   (rands (list-of expression?))))
+   (rands (list-of expression?)))
+  (if-exp
+   (test-exp true-value?)
+   (true-exp expression?)
+   (false-exp expression?))
+  (let-exp
+   (ids (list-of symbol?))
+   (rands (list-of expression?))
+   (body expression?))
+  (proc-exp
+   (ids symbol?)
+   (body expression?))
+  (app-exp
+   (rator expression?)
+   (rands expression?)))
 
 (define-datatype primitive primitive?
   (add-prim)
@@ -93,7 +111,10 @@
 ; 'x
 ; '(+ (- 3 x) (* (+ 2 x) (add1 5))
 
-
+(define closure
+  (lambda (ids body env)
+    (lambda (args)
+      (eval-expression body (extend-env ids args env)))))
     
 (define eval-program
   (lambda (p)
@@ -108,7 +129,21 @@
       (var-exp (id) (apply-env env id))
       (primapp-exp (prim rands)
                    (let ((args (eval-rands rands env)))
-                     (apply-primitive prim args))))))
+                     (apply-primitive prim args)))
+      (if-exp (test-exp true-exp false-exp)
+              (if (true-value? (eval-expression test-exp))
+                  (eval-expression true-exp)
+                  (eval-expression false-exp)))
+      (let-exp (ids rands body)
+               (let ((args (eval-rands rands env)))
+                 (eval-expression body (extend-env ids args env))))
+      (proc-exp (ids body) (closure ids body env))
+      (app-exp (rator rands)
+               (let ((proc (eval-expression rator env))
+                     (args (eval-rands rands env)))
+                 (if (procval? proc)
+                     (apply-procval proc args)
+                     (eopl:error "Attempt to apply non-procedure ~s" proc)))))))
 
 (define eval-rands
   (lambda (rands env)
@@ -130,8 +165,9 @@
 (define init-env
   (lambda ()
     (extend-env
-     '(x 5)
-     '())))
+     '(i v x)
+     '(1 5 10)
+     (empty-env))))
 
 (define apply-env
   (lambda (env id)
@@ -141,9 +177,20 @@
                 (car (cdr (car env)))
                 (eopl:error "unbound variable"))])))
 
+(define empty-env '())
+
 (define extend-env
-  (lambda (binding cur-env)
-    (cons binding cur-env)))
+  (lambda (ids vals cur-env)
+    (append (zip ids vals) cur-env)))
+
+(define zip
+  (lambda (ids vals)
+    (cond
+      [(and (null? ids) (null? vals)) empty-env]
+      [else (if (eqv? (length ids) (length vals))
+                (cons '((car ids) (car vals)) (zip (cdr ids) (cdr vals)))
+                (eopl:error "ids and vals don't match up"))])))
+      
 
 
     
