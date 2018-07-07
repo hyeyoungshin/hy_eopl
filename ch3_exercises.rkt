@@ -7,7 +7,7 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Datatype definitions:
+;; Datatype definitions:                             ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; An S-expr is one of: 
 ; – Atom
@@ -84,7 +84,7 @@
        (body : expression)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; The Front End (Sexpr -> AST)
+;; The Front End (Sexpr -> AST)                      ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Sexp -> Program
 (define sexp-to-program
@@ -154,22 +154,32 @@
 
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Substitution based interpreter
+;; Substitution based interpreter                  ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; expression -> bool
+; expression -> boolean
 (define closed? : (expression -> boolean)
-  (lambda (e)
-    (type-case expression e
-      (lit-exp (datum) true)
-      (var-exp (id) false)
-      (primapp-exp (prim rands) (andmap (lambda (r) (closed? r)) rands))
-      (let-exp (id rand body) (closed? (subst body id rand)))
-      (proc-exp (id body) (type-case expression body
-                            (var-exp (x) (symbol=? id x))
-                            (else (closed? body))))
-      (app-exp (rator rand) (and (closed? rator) (closed? rand))))))
-                
+  (local [(define closed?/a
+            (lambda (acc e)
+              (type-case expression e
+                (lit-exp (datum) true)
+                (var-exp (id) (member id acc))
+                (primapp-exp (prim rands) (andmap (lambda (r) (closed?/a acc r)) rands))
+                (let-exp (id rand body) (and (closed?/a acc rand)
+                                             (closed?/a (cons id acc) body)))
+                (proc-exp (id body) (closed?/a (cons id acc) body))
+                (app-exp (rator rand) (and (closed?/a acc rator) (closed?/a acc rand))))))]
+    (lambda (e)
+      (closed?/a empty e))))
+
+(test (closed? (var-exp 'x)) false)
+(test (closed? (proc-exp 'x (var-exp 'x))) true)
+(test (closed? (proc-exp 'x (primapp-exp (add1-prim) (list (var-exp 'x))))) true)
+(test (closed? (app-exp (proc-exp 'x (var-exp 'x)) (proc-exp 'x (primapp-exp (add1-prim) (list (var-exp 'x)))))) true)
+(test (closed? (let-exp 'x (var-exp 'y) (var-exp 'x)))
+      false)
+
+      
       
 
 ; expression symbol expression -> expression
@@ -211,7 +221,9 @@
 (test (subst (proc-exp 'f (proc-exp 'x (app-exp (var-exp 'f) (var-exp 'x)))) 'f (proc-exp 'x (var-exp 'x)))
       (proc-exp 'f (proc-exp 'x (app-exp (var-exp 'f) (var-exp 'x)))))
 (test/exn (subst (proc-exp 'x (var-exp 'y)) 'y (var-exp 'x))
-      "can't substitute an open term") ;<-------------------------------------------------------------------------------------------------------------failing
+      "can't substitute an open term")
+(test/exn (subst (proc-exp 'x (var-exp 'x)) 'x (let-exp 'x (var-exp 'y) (var-exp 'x)))
+      "can't substitute an open term")
 
 ; Solution: 
 ; I make the interpreter not allow a free variable to be applied to a function.
@@ -288,26 +300,32 @@
                    (num (n)
                         (error 'eval-expression-subst "Attempt to apply non-procedure"))))))))
 
-(test 
+(test (eval-expression-subst (app-exp (proc-exp 'x (var-exp 'x)) (proc-exp 'x (primapp-exp (add1-prim) (list (var-exp 'x))))))
+      (fun (lam 'x (primapp-exp (add1-prim) (list (var-exp 'x))))))
+(test (eval-expression-subst (app-exp (proc-exp 'x (primapp-exp (add1-prim) (list (primapp-exp (add-prim) (list (var-exp 'x) (lit-exp 5)))))) (lit-exp 6)))
+      (num 12))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Environment passing interpreter
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-#;(define eval-program
-    (lambda (p)
-      (type-case program p
-        (a-program (body)
-                   (eval-expression body (init-env))))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\
 
-#;(define eval-expression
+; program -> value
+#;(define eval-program
+  (lambda (p)
+    (type-case program p
+      (a-program (body)
+                 (eval-expression body (init-env))))))
+
+; expression listof value -> value
+#;(define eval-expression : (expression (listof value) -> value)
     (lambda (exp env)
       (type-case expression exp
-        (lit-exp (datum) datum)
+        (lit-exp (datum) (num datum))
         (var-exp (id) (apply-env env id))
         (primapp-exp (prim rands)
                      (let ((args (eval-rands rands env)))
                        (apply-primitive prim args)))
-        (if-exp (test-exp true-exp false-exp)
+        #;(if-exp (test-exp true-exp false-exp)
                 (if (true-value? (eval-expression test-exp))
                     (eval-expression true-exp)
                     (eval-expression false-exp)))
@@ -320,7 +338,7 @@
                        (args (eval-rands rands env)))
                    (if (procval? proc)
                        (apply-procval proc args)
-                       (eopl:error "Attempt to apply non-procedure ~s" proc)))))))
+                       (error 'eval-expression "Attempt to apply non-procedure ")))))))
 
 #;(define eval-rands
   (lambda (rands env)
@@ -330,8 +348,6 @@
   (lambda (rand env)
     (eval-expression rand env)))
 
-
-
 #;(define init-env
   (lambda ()
     (extend-env
@@ -339,10 +355,11 @@
      '(1 5 10)
      (empty-env))))
 
-#;(define apply-env
+; (listof value) symbol -> value
+#;(define apply-env : ((listof value) symbol -> value)
   (lambda (env id)
     (cond
-      [(null? env) (eopl:error "empty environment")]
+      [(null? env) (error 'apply-env "empty environment")]
       [else (if (equal? (first (first env)) id)
                 (first (rest (first env)))
                 (eopl:error "unbound variable"))])))
