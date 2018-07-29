@@ -65,7 +65,6 @@
   (num (n : number))
   (fun (f : proc)))
 
-; For substitution based interpreter
 (define-type proc 
   (lam (id : symbol)
        (body : expression)))

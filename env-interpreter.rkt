@@ -55,7 +55,7 @@
     
 (define-type procval
    (closure ;<------------------ tells how to build a procedure value
-    (ids : (list-of symbol))
+    (ids : (listof symbol))
     (body : expression)
     (env : environment)))
 
@@ -103,6 +103,23 @@
 (define-type value
   (num (n : number))
   (fun (f : procval)))
+
+#;(define-type procval
+  (lam (id : symbol)
+       (body : expression)))
+
+(define val-to-exp
+  (lambda ([v : value])
+    (type-case value v
+      (num (n) (lit-exp n))
+      (fun (f) (type-case procval f
+                 (closure (ids body env) (proc-exp ids body)))))))
+
+(define val-to-num
+  (lambda (v)
+    (type-case value v
+      (num (n) n)
+      (fun (f) (error 'val-to-num "not a number")))))
   
 (define apply-primitive : (primitive (listof value) -> value)
   (lambda (prim args)
@@ -183,7 +200,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Environment passing interpreter
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; program -> value
 (define eval-program
@@ -227,16 +244,91 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                           Environment                                 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Representation 1 : Ribs
-(define init-env
+;; Representation 1: Procedural representation of environments
+
+;; empty-env: 
+;; When passed any symbol whatwoever, it indicates with an error message
+;; that the given symbol is not in its domain
+(define empty-env
   (lambda ()
-    (extend-env
-     '(i v x)
-     '(1 5 10)
-     (empty-env))))
+    (lambda (sym)
+      (error 'apply-env (string-append "No binding for " (to-string sym))))))
+
+;; extend-env:
+;; returns a new procedure that represents the extended environment
+(define extend-env
+  (lambda (syms vals env)
+    (lambda (sym)
+      (let ((pos (list-find-position sym syms))) ; finds the position of sym in syms
+        (type-case value pos
+          (num (n) (list-ref vals n)) ; returns the value in vals at position n
+          (else (apply-env env sym)))))))
+
+(define apply-env
+  (lambda (env sym)
+    (env sym)))
+
+
+; Symbol listof Symbol -> Value (Number)
+(define list-find-position
+  (lambda (sym los)
+    (list-index (lambda (sym1) (symbol=? sym1 sym)) los)))
+
+; (Symbol -> Bool) listof Symbol -> Value (Should be Number)
+(define list-index
+  (lambda (pred ls)
+    (cond
+      ((empty? ls) (error 'list-index "empty environment"))
+      ((pred (first ls)) (num 0))
+      (else (let ((list-index-r (list-index pred (rest ls))))
+              (type-case value list-index-r
+                (num (n) (num (+ n 1)))
+                (fun (f) (error 'list-index "position not a number"))))))))
+
+; listof Value Number -> Value
+(define list-ref
+  (lambda (vals i)
+    (cond
+      ((eq? i 0) (first vals))
+      (else (list-ref (rest vals) (- i 1))))))
+    
+
+;; example
+(define dxy-env
+  (extend-env '(d x) '(6 7)
+              (extend-env '(y) '(8)
+                          (empty-env))))
+
+(test (apply-env dxy-env 'x) 7)
+ 
+;; Representation 2 : AST (ribs)
+(define-datatype environment
+  (empty-env-record)
+  (extended-env-record
+   (syms : listof symbol)
+   (vals : listof value)
+   (env : environment)))
+
+(define empty-env
+  (lambda ()
+    (empty-env-record)))
+(define extend-env
+  (lambda (syms vals env)
+    (extended-env-record syms vals env)))
+
+(define apply-env
+  (lambda (env sym)
+    (type-case environment env
+      (empty-env-record () (error 'apply-env (string-append "No binding for " (to-string sym))))
+      (extended-env-record (syms vals env)
+                           (let ((pos (list-find-position sym syms)))
+                             (type-case value pos
+                               (num (n) (list-ref vals pos))
+                               (else apply-env env sym)))))))
+
 
 ; (listof value) symbol -> value
-(define apply-env : ((listof value) symbol -> value)
+#;(define apply-env : ((listof value) symbol -> value)
   (lambda (env id)
     (cond
       [(null? env) (error 'apply-env "empty environment")]
@@ -244,13 +336,12 @@
                 (first (rest (first env)))
                 (eopl:error "unbound variable"))])))
 
-(define empty-env '())
 
-(define extend-env
+#;(define extend-env
   (lambda (ids vals cur-env)
     (append (zip ids vals) cur-env)))
 
-(define zip
+#;(define zip
   (lambda (ids vals)
     (cond
       [(and (null? ids) (null? vals)) empty-env]

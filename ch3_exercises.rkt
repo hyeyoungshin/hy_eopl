@@ -27,10 +27,6 @@
   (lambda (x)
     (not (zero? x))))
 
-#;(define closure
-  (lambda (ids body env)
-    (lambda (args)
-      (eval-expression body (extend-env ids args env)))))
 
 (define-type program
   (a-program (exp : expression)))
@@ -68,20 +64,12 @@
 (define-type value
   (num (n : number))
   (fun (f : proc)))
-  
-  
-
-; For environment passing interpreter
-#;(define-type procval procval?
-   (closure
-    (ids (list-of symbol?))
-    (body expression?)
-    (env environment?)))
 
 ; For substitution based interpreter
 (define-type proc 
   (lam (id : symbol)
        (body : expression)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; The Front End (Sexpr -> AST)                      ;;
@@ -305,82 +293,3 @@
 (test (eval-expression-subst (app-exp (proc-exp 'x (primapp-exp (add1-prim) (list (primapp-exp (add-prim) (list (var-exp 'x) (lit-exp 5)))))) (lit-exp 6)))
       (num 12))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Environment passing interpreter
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\
-
-; program -> value
-#;(define eval-program
-  (lambda (p)
-    (type-case program p
-      (a-program (body)
-                 (eval-expression body (init-env))))))
-
-; expression listof value -> value
-#;(define eval-expression : (expression (listof value) -> value)
-    (lambda (exp env)
-      (type-case expression exp
-        (lit-exp (datum) (num datum))
-        (var-exp (id) (apply-env env id))
-        (primapp-exp (prim rands)
-                     (let ((args (eval-rands rands env)))
-                       (apply-primitive prim args)))
-        #;(if-exp (test-exp true-exp false-exp)
-                (if (true-value? (eval-expression test-exp))
-                    (eval-expression true-exp)
-                    (eval-expression false-exp)))
-        (let-exp (ids rands body)
-                 (let ((args (eval-rands rands env)))
-                   (eval-expression body (extend-env ids args env))))
-        (proc-exp (ids body) (closure ids body env))
-        (app-exp (rator rands)
-                 (let ((proc (eval-expression rator env))
-                       (args (eval-rands rands env)))
-                   (if (procval? proc)
-                       (apply-procval proc args)
-                       (error 'eval-expression "Attempt to apply non-procedure ")))))))
-
-#;(define eval-rands
-  (lambda (rands env)
-    (map (lambda (x) (eval-rand x env)) rands)))
-
-#;(define eval-rand
-  (lambda (rand env)
-    (eval-expression rand env)))
-
-#;(define init-env
-  (lambda ()
-    (extend-env
-     '(i v x)
-     '(1 5 10)
-     (empty-env))))
-
-; (listof value) symbol -> value
-#;(define apply-env : ((listof value) symbol -> value)
-  (lambda (env id)
-    (cond
-      [(null? env) (error 'apply-env "empty environment")]
-      [else (if (equal? (first (first env)) id)
-                (first (rest (first env)))
-                (eopl:error "unbound variable"))])))
-
-#;(define empty-env '())
-
-#;(define extend-env
-  (lambda (ids vals cur-env)
-    (append (zip ids vals) cur-env)))
-
-#;(define zip
-  (lambda (ids vals)
-    (cond
-      [(and (null? ids) (null? vals)) empty-env]
-      [else (if (equal? (length ids) (length vals))
-                (cons '((first ids) (first vals)) (zip (rest ids) (rest vals)))
-                (eopl:error "ids and vals don't match up"))])))
-      
-
-
-    
-
-        
-      
