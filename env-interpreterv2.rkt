@@ -3,12 +3,17 @@
 (require (typed-in racket [ormap : (('T -> boolean) (listof 'T) -> boolean)]))
 (require (typed-in racket [andmap : (('T -> boolean) (listof 'T) -> boolean)]))
 
+;; data definition for environment
 (define-type environment
   (empty-env)
   (extend-env
-  (sym : symbol)
-  (val : expval)
-  (env : environment)))
+    (sym : symbol)
+    (val : expval)
+    (env : environment))
+  (extend-env*
+   (syms : (listof symbol))
+   (vals : (listof expval))
+   (env : environment)))
 
 
 (define apply-env
@@ -19,36 +24,33 @@
       (extend-env (sym1 val env1)
                   (if (eq? sym sym1)
                       val
-                      (apply-env env1 sym))))))
-                  #;(let ((pos (list-find-position sym syms)))
-                    (type-case value pos
-                      (num (n) (list-ref vals n))
-                      (else (apply-env env sym))))
+                      (apply-env env1 sym)))
+      (extend-env* (syms vals env1)
+                   (let ((pos (list-find-position sym syms)))
+                     (type-case expval pos
+                       (num-val (n) (list-ref vals n)) 
+                       (else (apply-env env sym))))))))
 
-#;(define list-ref : ((listof value) number -> value)
-  (lambda (vals i)
-    (cond
-      ((eq? i 0) (first vals))
-      (else (list-ref (rest vals) (- i 1))))))
 
-#;(define list-find-position : (symbol (listof symbol) -> value)
-  (lambda (sym los)
-    (list-index (lambda (sym1) (eq? sym1 sym)) los)))
+;; the interface bundle 
+(define-type representationof-environment
+  (env-interface
+    (empty-env : (-> environment))
+    (extend-env : (symbol expval environment -> environment))
+    (apply-env : (environment symbol -> expval))))
 
-;; Procedural representation of environment
-;; -empty-env
-;; -extend-env
-;; -apply-env
+
+;; procedural implementation of environment
 #;(define empty-env
   (lambda ()
     (lambda (sym)
       (error 'apply-env (string-append "No binding for " (to-string sym))))))
 
-#;(define extend-env : ((listof symbol) (listof value) environment -> value)
+#;(define extend-env : ((listof symbol) (listof value) environment -> expval)
   (lambda (syms vals env)
     (lambda (sym)
       (let ((pos (list-find-position sym syms)))
-        (type-case value pos
+        (type-case expval pos
           (num (n) (list-ref vals n))
           (else (apply-env env sym)))))))
 
@@ -58,20 +60,48 @@
 
 
 
+;; ribcage implementation of environment
+#;(define empty-env
+  (lambda () '()))
 
+#;(define extend-env*
+  (lambda (syms vals env)
+    (let ((rib (pair syms vals)))
+      (cons (pair rib env)))))
 
+#;(define apply-env
+  (lambda (env sym)
+    (type-case environment env
+      (empty-env () (error 'apply-env (string-append "No binding for " (to-string sym))))
+      (extend-env (sym1 val env1)
+                  (if (eq? sym sym1)
+                      val
+                      (apply-env env1 sym)))
+      (extend-env* (syms vals env1)
+                   (let ((pos (list-find-position sym syms)))
+                     (type-case value pos
+                       (num (n) (list-ref vals n)) 
+                       (else (apply-env env sym))))))))
 
-; if returns (num n), then n is the index of the symbol
-; anything else means "symbol not found"
-#;(define list-index
-  (lambda (pred ls)
+(define list-find-position : (symbol (listof symbol) -> expval)
+  (lambda (sym los)
+    (list-index (lambda (sym1) (symbol=? sym1 sym)) los)))
+
+(define list-index : ((symbol -> boolean) (listof symbol) -> expval)
+  (lambda (compare ls)
     (cond
-      ((empty? ls) (truth false))
-      ((pred (first ls)) (num 0))
-      (else (let ((list-index-r (list-index pred (rest ls))))
-              (type-case value list-index-r
-                (num (n) (num (+ n 1)))
-                (else list-index-r)))))))
+      ((empty? ls) (error 'list-index "empty environment"))
+      ((compare (first ls)) (num-val 0))
+      (else (list-index compare (rest ls))))))
+              
+(define list-ref : ((listof expval) number -> expval)
+  (lambda (vals i)
+    (cond
+      ((eq? i 0) (first vals))
+      (else (list-ref (rest vals) (- i 1))))))
+
+
+
 
 ;;;;;;;;;;;;;;;;;;;;  
 (define-type program
@@ -87,9 +117,6 @@
   (diff-exp
    (e1 : expression)
    (e2 : expression))
-  #;(primapp-exp
-   (prim : primitive)
-   (rands : (listof expression)))
   (if-exp
    (test-exp : expression)
    (true-exp : expression)
@@ -105,23 +132,26 @@
    (rator : expression)
    (rand : expression)))
 
-#;(define-type primitive
-  (add-prim) ; add-prim is a function if you do (add-prim) you are calling it
-  (sub-prim)
-  (mul-prim)
-  (add1-prim)
-  (sub1-prim))
-
 (define-type expval
   (num-val (n : number))
   (bool-val (b : boolean))
   (proc-val (f : proc)))
 
 (define-type proc
-  (procedure ; "closure" in the 2nd ed.
+  (procedure                  ; called "closure" in the 2nd ed.
    (id : symbol)
    (body : expression)
    (env : environment)))
+
+(define apply-procedure : (proc expval -> expval)
+  (lambda (f v)
+    (type-case proc f
+      (procedure (id body env) (eval-expression body (extend-env id v env))))))
+
+(define-type closure-interface
+  (clo-interface
+   (procedure : (symbol expression environment -> proc))
+   (apply-procedure : (proc expval -> expval))))
 
 (define expval->num
   (lambda (val)
@@ -135,32 +165,6 @@
       (bool-val (b) b)
       (else (error 'expval->num "not a bool-val")))))
    
-(define apply-procedure : (proc expval -> expval)
-  (lambda (f v)
-    (type-case proc f
-      (procedure (id body env) (eval-expression body (extend-env id v env))))))
-
-
-#;(define true-value?
-  (lambda (x)
-    (type-case value x
-      (num (n) (not (eq? n 0)))
-      (else #f))))
-    
-#;(define val-to-num : (value -> number) 
-  (lambda (v)
-    (type-case value v
-      (num (n) n)
-      (else (error 'val-to-num "not a number")))))
-
-#;(define apply-primitive : (primitive (listof value) -> value)
-  (lambda (prim args)
-    (type-case primitive prim
-      (add-prim () (num (+ (val-to-num (first args)) (val-to-num (second args)))))
-      (sub-prim () (num (- (val-to-num (first args)) (val-to-num (second args)))))
-      (mul-prim () (num (* (val-to-num (first args)) (val-to-num (second args)))))
-      (add1-prim () (num (+ (val-to-num (first args)) 1)))
-      (sub1-prim () (num (- (val-to-num (first args)) 1))))))
 
 (define init-env
   (lambda ()
@@ -186,9 +190,6 @@
       (bool-exp (b) (bool-val b))
       (var-exp (id) (apply-env env id))
       (diff-exp (e1 e2) (num-val (- (expval->num (eval-expression e1 env)) (expval->num (eval-expression e2 env)))))
-      #;(primapp-exp (prim rands)
-                   (let ((args (eval-rands rands env)))
-                     (apply-primitive prim args)))
       (if-exp (test-exp true-exp false-exp)
               (let ((test (eval-expression test-exp env))
                     (true-case (eval-expression true-exp env))
@@ -210,27 +211,18 @@
 (test (eval-program (a-program (var-exp 'i))) (num-val 1))
 (test (eval-program (a-program (let-exp 'x (const-exp 42) (diff-exp (var-exp 'x) (const-exp 2))))) (num-val 40))
 (test (eval-program (a-program (let-exp 'i (const-exp 42) (diff-exp (var-exp 'i) (const-exp 2))))) (num-val 40)) ; shadowing works because apply-env checks give priority to smbols added more recently
-
-#;(define eval-rands : ((listof expression) environment -> (listof value))
-  (lambda (rands env)
-    (map (lambda (x) (eval-rand x env)) rands)))
-
-#;(define eval-rand : (expression environment -> value)
-  (lambda (rand env)
-    (eval-expression rand env)))
+(test (eval-program (a-program (let-exp 'f (proc-exp 'x (diff-exp (var-exp 'x) (const-exp 2))) (app-exp (var-exp 'f) (const-exp 3))))) (num-val 1))
 
 
-#;(define make-interpreter : ((symbol expression environment -> proc) (symbol -> expval) -> (program -> expval)) 
+
+#;(define-type representationof ...)
+ 
+(define make-interpreter : (representationof-closure representationof-environment -> (program -> expval)) 
   (lambda (clo env)
-    (eval-program clo env)))
+    (type-case
+        (env-interface (empty extend apply)
+                       (type-case
+                           (clo-interface (pro apply) ...))))))
+                       
+                       
 
-
-;; S-expression program examples:
-
-#;'(let f = proc (y z) + (y (- z 5))
-   in (f 2 28))
-
-#;'(let x = 5
-   in (let f = proc (y z) (+ y (- z x))
-           x = 28
-        in (f 2 x)))
