@@ -3,15 +3,14 @@
 (require (typed-in racket [ormap : (('T -> boolean) (listof 'T) -> boolean)]))
 (require (typed-in racket [andmap : (('T -> boolean) (listof 'T) -> boolean)]))
 
-;;--------------------------------------
-;; The data definition for environment
-
-(define-type environment
+;(module+ env-interface plai-typed
+  (define-type environment
   (empty-env)
   (extend-env
    (syms : (listof symbol))
    (vals : (listof value))
    (env : environment)))
+
 
 (define apply-env
   (lambda (env sym)
@@ -23,13 +22,21 @@
                     (type-case value pos
                       (num (n) (list-ref vals n))
                       (else (apply-env env sym))))))))
-      #;(extend-env (sym1 val env1)
-                  (if (eq? sym1 sym)
-                      val
-                      (apply-env env1 sym)))
-                  
+
+(define list-ref : ((listof value) number -> value)
+  (lambda (vals i)
+    (cond
+      ((eq? i 0) (first vals))
+      (else (list-ref (rest vals) (- i 1))))))
+
+(define list-find-position : (symbol (listof symbol) -> value)
+  (lambda (sym los)
+    (list-index (lambda (sym1) (eq? sym1 sym)) los)))
 
 ;; Procedural representation of environment
+;; -empty-env
+;; -extend-env
+;; -apply-env
 #;(define empty-env
   (lambda ()
     (lambda (sym)
@@ -47,17 +54,9 @@
   (lambda (env sym)
     (env sym)))
 
-(define list-ref : ((listof value) number -> value)
-  (lambda (vals i)
-    (cond
-      ((eq? i 0) (first vals))
-      (else (list-ref (rest vals) (- i 1))))))
 
 
 
-(define list-find-position : (symbol (listof symbol) -> value)
-  (lambda (sym los)
-    (list-index (lambda (sym1) (eq? sym1 sym)) los)))
 
 
 ; if returns (num n), then n is the index of the symbol
@@ -197,7 +196,7 @@
     (eval-expression rand env)))
 
 
-#;(define make-interpreter : (closure environment -> (program -> value))
+(define make-interpreter : (closure environment -> (program -> value))
   (lambda (clo env)
     (eval-program clo env)))
 
