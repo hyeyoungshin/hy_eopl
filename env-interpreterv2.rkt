@@ -181,7 +181,14 @@
   (lambda (p)
     (type-case program p
       (a-program (body)
-                 (eval-expression body (init-env))))))
+                 (eval-expression body (lambda ()
+                                         (extend-env
+                                          'i (num-val 1)
+                                          (extend-env
+                                           'v (num-val 5)
+                                           (extend-env
+                                            'y (num-val 10)
+                                            (empty-env))))))))))
 
 (define eval-expression : (expression environment -> expval)
   (lambda (exp env)
@@ -222,7 +229,17 @@
     (type-case
         (env-interface (empty extend apply)
                        (type-case
-                           (clo-interface (pro apply) ...))))))
+                           (clo-interface (pro apply) (lambda (p)
+                                                        (type-case program p
+                                                          (a-program (body)
+                                                                     (eval-expression body (lambda ()
+                                                                                             (extend
+                                                                                              'i (num-val 1)
+                                                                                              (extend
+                                                                                               'v (num-val 5)
+                                                                                               (extend
+                                                                                                'y (num-val 10)
+                                                                                                (empty-env)))))))))))))))
                        
                        
 
