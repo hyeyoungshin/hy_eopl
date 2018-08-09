@@ -32,33 +32,22 @@
                        (else (apply-env env sym))))))))
 
 
-;; the interface bundle 
-(define-type representationof-environment
-  (env-interface
-    (empty-env : (-> environment))
-    (extend-env : (symbol expval environment -> environment))
-    (apply-env : (environment symbol -> expval))))
-
-
 ;; procedural implementation of environment
 #;(define empty-env
   (lambda ()
     (lambda (sym)
       (error 'apply-env (string-append "No binding for " (to-string sym))))))
 
-#;(define extend-env : ((listof symbol) (listof value) environment -> expval)
-  (lambda (syms vals env)
-    (lambda (sym)
-      (let ((pos (list-find-position sym syms)))
-        (type-case expval pos
-          (num (n) (list-ref vals n))
-          (else (apply-env env sym)))))))
-
+#;(define extend-env : (symbol value environment -> environment)
+    (lambda (sym val env)
+      (lambda (sym)
+        (if (eq? sym sym1)
+            val
+            (apply-env env1 sym)))))
+    
 #;(define apply-env : (environment symbol -> value)
   (lambda (env sym)
     (env sym)))
-
-
 
 ;; ribcage implementation of environment
 #;(define empty-env
@@ -99,6 +88,44 @@
     (cond
       ((eq? i 0) (first vals))
       (else (list-ref (rest vals) (- i 1))))))
+
+
+;; the interface bundle 
+(define-type representationof-environment
+  (env-interface
+    (empty-env : (-> environment))
+    (extend-env : (symbol expval environment -> environment))
+    (apply-env : (environment symbol -> expval))))
+
+(define procedural-env : representationof-environment
+  (env-interface
+   ((lambda ()
+      (lambda (sym)
+        (error 'apply-env (string-append "No binding for " (to-string sym)))))
+    (lambda (new-sym new-val env)
+      (lambda (sym)
+        (if (eq? sym new-sym)
+            new-val
+            (apply-env env sym))))
+    (lambda (env sym)
+      (type-case environment env
+        (empty-env () (error 'apply-env (string-append "No binding for " (to-string sym))))
+        (extend-env (sym1 val env1)
+                    (if (eq? sym sym1)
+                        val
+                        (apply-env env1 sym)))
+        (extend-env* (syms vals env1)
+                     (let ((pos (list-find-position sym syms)))
+                       (type-case expval pos
+                         (num-val (n) (list-ref vals n)) 
+                         (else (apply-env env sym))))))))))
+  
+
+
+
+
+
+
 
 
 
@@ -225,19 +252,31 @@
  
 (define make-interpreter : (representationof-closure representationof-environment -> (program -> expval)) 
   (lambda (clo env)
-    (type-case representationof-environment env
-        (env-interface (empty extend apply)
-                       (type-case representationof-closure clo
-                           (clo-interface (pro apply) (lambda (p)
-                                                        (type-case program p
-                                                          (a-program (body)
-                                                                     (eval-expression body (extend
-                                                                                             'i (num-val 1)
-                                                                                             (extend
-                                                                                              'v (num-val 5)
-                                                                                              (extend
-                                                                                               'y (num-val 10)
-                                                                                               (empty-env))))))))))))))
+    (local (
+            (define-values (empty extend apply-env)
+              (type-case representationof-environment env
+                (env-interface (empty extend apply) (values empty extend apply-env))))
+            (define env0
+              (let* ([env0 (empty-env)]
+                     [env0 (extend 'y (num-val 10) env0)]
+                     [env0 (extend 'v (num-val 5) env0)]
+                     [env0 (extend 'i (num-val 1) env0)])
+                env0))
+            (define-values (pro apply)
+              (type-case representationof-closure clo
+                (clo-interface (pro apply) (values pro apply)))))
+      (lambda (p)
+        (type-case program p
+          (a-program (body) (eval-expression body env0)))))))
+
+
+(define intrp1 0)
+
+#;
+(define make-testsuit
+  (lambda (intrp)
+    (test ())))
+    
                        
                        
 
