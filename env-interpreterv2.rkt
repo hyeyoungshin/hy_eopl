@@ -148,7 +148,7 @@
     (type-case proc f
       (procedure (id body env) (eval-expression body (extend-env id v env))))))
 
-(define-type closure-interface
+(define-type representationof-closure
   (clo-interface
    (procedure : (symbol expression environment -> proc))
    (apply-procedure : (proc expval -> expval))))
@@ -181,14 +181,13 @@
   (lambda (p)
     (type-case program p
       (a-program (body)
-                 (eval-expression body (lambda ()
+                 (eval-expression body (extend-env
+                                        'i (num-val 1)
+                                        (extend-env
+                                         'v (num-val 5)
                                          (extend-env
-                                          'i (num-val 1)
-                                          (extend-env
-                                           'v (num-val 5)
-                                           (extend-env
-                                            'y (num-val 10)
-                                            (empty-env))))))))))
+                                          'y (num-val 10)
+                                          (empty-env)))))))))
 
 (define eval-expression : (expression environment -> expval)
   (lambda (exp env)
@@ -226,20 +225,19 @@
  
 (define make-interpreter : (representationof-closure representationof-environment -> (program -> expval)) 
   (lambda (clo env)
-    (type-case
+    (type-case representationof-environment env
         (env-interface (empty extend apply)
-                       (type-case
+                       (type-case representationof-closure clo
                            (clo-interface (pro apply) (lambda (p)
                                                         (type-case program p
                                                           (a-program (body)
-                                                                     (eval-expression body (lambda ()
+                                                                     (eval-expression body (extend
+                                                                                             'i (num-val 1)
                                                                                              (extend
-                                                                                              'i (num-val 1)
+                                                                                              'v (num-val 5)
                                                                                               (extend
-                                                                                               'v (num-val 5)
-                                                                                               (extend
-                                                                                                'y (num-val 10)
-                                                                                                (empty-env)))))))))))))))
+                                                                                               'y (num-val 10)
+                                                                                               (empty-env))))))))))))))
                        
                        
 
