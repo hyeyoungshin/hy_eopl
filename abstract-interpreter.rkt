@@ -1,11 +1,13 @@
 #lang racket
 
+#;(require expect/rackunit)
+
 ;; ---------------------------------------------------------------------------------------------------
 ;; here is the abstract set up 
 
 ;; type AST
-(struct a-program (an-expression))
-(struct an-expression (const-exp bool-exp var-exp diff-exp if-exp let-exp proc-exp app-exp))
+#;(struct a-program (an-expression))
+#;(struct an-expression (const-exp bool-exp var-exp diff-exp if-exp let-exp proc-exp app-exp))
 
 (struct const-exp (num))
 (struct bool-exp (bool))
@@ -17,11 +19,11 @@
 (struct app-exp (rator rand))
 
 ;; type Value
-(struct a-value (num-val bool-val proc-val))
+#;(struct a-value (num-val bool-val proc-val))
 
-(struct num-val (n))
-(struct bool-val (b))
-(struct proc-val (f))
+(struct num-val (num))
+(struct bool-val (bool))
+(struct proc-val (fun))
 
 (struct environment-representation (new extend lookup))
 ;; ER =
@@ -36,7 +38,7 @@
 #; (type AST, type ER 
       -> {type Closure;
                (closure-representation
-                make : AST Enviroment -> Closure
+                make : Symbol Expression Enviroment -> Closure
                 apply : Closure Value -> Value)})
 
 #; (ER (ER (AST ER.Environment -> Value) -> CR) -> [AST -> Value])
@@ -52,17 +54,44 @@
                                    (lambda (expression environment)
                                      (expression-interpreter expression environment))))
 
-  ;; AST -> Value 
+  ;; a-program -> Value 
   (define (program-interpreter program)
     (expression-interpreter program (new))) ;; <-- fix this 
 
-  ;; AST an-environment-representation.Environment -> Value
-  (define (expression-interpreter expression environment)
-    0) ;; <--- and that, and it will all work 
-
-  ;; - - -
+  ;; an-exoression an-environment-representation.Environment -> Value
+  (define (expression-interpreter exp env)
+    (match exp
+      [(const-exp num) (num-val num)]
+      [(bool-exp bool) (bool-val bool)]
+      [(var-exp id) (lookup env id)]
+      [(diff-exp e1 e2) (num-val (- (val->num (expression-interpreter e1 env)) (val->num (expression-interpreter e2 env))))]
+      [(if-exp test true-branch false-branch)
+       (if (val->bool (expression-interpreter test env))
+           (expression-interpreter true-branch env)
+           (expression-interpreter false-branch env))]
+      [(let-exp id exp body) (let ((val (expression-interpreter exp env)))
+                               (expression-interpreter body (extend env id val)))]
+      [(proc-exp var body-exp) (proc-val (make var body-exp env))]
+      [(app-exp rator rand)
+       (let ((fun (expression-interpreter rator env))
+             (arg (expression-interpreter rand env)))      ; <-- c-b-v 
+         (match fun
+           [(proc-val f) (apply f arg)]
+           [_ (error "applying to a non-function")]))]))
 
   program-interpreter)
+
+(define (val->num val)
+  (match val
+    [(num-val n) n]
+    [_ (error "not a num-val")]))
+
+(define (val->bool val)
+  (match val
+    [(bool-val b) b]
+    [_ (error "not a bool-val")]))
+
+
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; here is a concrete instantiation 
@@ -74,6 +103,30 @@
    (lambda () (lambda (x) (error 'lookup "not found: ~e" x)))
    (lambda (e x a) (lambda (y) (if (eq? x y) a (e y))))
    (lambda (e x) (e x))))
+
+(define environments-as-ribcage
+  ; helper function
+  ; returns the value in the list at the index 
+  (local
+    [(define (value-at-index lst index)
+       (if (eq? 0 index)
+           (car lst)
+           (value-at-index (rest lst) (- index 1))))]
+        
+  (environment-representation
+   (lambda () '())
+   (lambda (syms vals env) ; list of variagles list of values environment -> environment 
+     (cons (list syms vals) env))
+   (lambda (env sym)
+     (if (null? env)
+         (error "empty environment")
+         (let ((syms (car (car env)))
+               (vals (cadr (car env)))
+               (env-old (cdr env)))
+           (if (number? (index-of syms sym))
+               (value-at-index vals (index-of syms sym))
+               (error (string-append "no binding for "(symbol->string sym))))))))))
+            
 
 ;; (ER INT -> CR)
 (define (make-closures-as-structs an-environment-representation interpreter) ; defines a procedure named `make-closures-as-structs` which takes two arguments
@@ -89,21 +142,54 @@
      (match-define (closure parameter body env) a-closure)
      (interpreter body (extend env parameter argument)))))
 
-;; TODO
-#;(define (make-closures-as-functions an-environment-representation interpreter)
+
+(define (make-closures-as-functions an-environment-representation interpreter)
   (match-define (environment-representation new extend lookup)
     an-environment-representation)
+
+  (define (make var body-exp env)
+    (lambda (arg-val)           ; argument is always in a value form
+      (interpreter body-exp (extend env var arg-val))))
+  
+  (define (apply clo arg-val)
+     clo arg-val)
+    
   (closure-representation
-   ; how to make a closure procedurally here
-   (lambda (a-closure argument)
-     ; how to apply a procedural closure here
-     )))
+   make
+   apply))
 
 ;; AST -> Value
 (define one-interpreter (make-interpreter environments-as-closures make-closures-as-structs))
 
-;; TODO
-#;(define another-interpreter (make-interpreter environments-as-ribcage make-clusres-as-functions))
+(define another-interpreter (make-interpreter environments-as-ribcage make-closures-as-functions))
 
-;; RUN Lola RUN 
-(one-interpreter '((define (f x) 1) (f 0)))
+(define weird-interpreter (make-interpreter environments-as-closures make-closures-as-functions))
+
+(define even-weirder-interpreter (make-interpreter environments-as-ribcage make-closures-as-structs))
+
+(define (check-val val)
+  (match val
+    [(num-val n) n]
+    [(bool-val b) b]
+    [(proc-val f) f]
+    [_ (error "not a value")]))
+
+;; RUN Lola RUN
+(check-val (one-interpreter (const-exp 0)))
+(check-val (one-interpreter (bool-exp #t)))
+(check-val (another-interpreter (const-exp 0)))
+(check-val (one-interpreter (let-exp 'x (const-exp 2) (diff-exp (var-exp 'x) (const-exp 1)))))
+(check-val (one-interpreter (proc-exp 'x (diff-exp (var-exp 'x) (const-exp 42)))))
+
+
+(check-val (one-interpreter (app-exp (proc-exp 'x (diff-exp (var-exp 'x) (const-exp 42))) (const-exp 100)))) ; should be 100-42 = 58
+
+(check-val (another-interpreter (app-exp (proc-exp 'x (diff-exp (var-exp 'x) (const-exp 42))) (const-exp 100)))) ; should be 100-42 = 58, but 100
+(check-val (another-interpreter (diff-exp (const-exp 4) (const-exp 1))))  ; should be 3
+(check-val (another-interpreter (app-exp (proc-exp 'x 4) (const-exp 2)))) ; should be 4 (constant function), but 2
+(check-val (weird-interpreter (app-exp (proc-exp 'x (diff-exp (var-exp 'x) (const-exp 42))) (const-exp 100)))) ; should be 58, but 100
+(check-val (even-weirder-interpreter (app-exp (proc-exp 'x (diff-exp (var-exp 'x) (const-exp 42))) (const-exp 100)))) ; should be 58
+
+
+(define (make-testsuits interpreter)
+  (check-expect (check-val (make-interpreter environments-as-closures make-closures-as-structs) (const-exp 0)) 0))
