@@ -16,7 +16,9 @@
 (struct if-exp (test true-branch false-branch))
 (struct let-exp (id exp body))
 (struct proc-exp (var body))
+#;(struct proc-exp2 (vars body))
 (struct app-exp (rator rand))
+(struct app-exp2 (rator rands))
 
 ;; type Value
 #;(struct a-value (num-val bool-val proc-val))
@@ -72,11 +74,18 @@
       [(let-exp id exp body) (let ((val (expression-interpreter exp env)))
                                (expression-interpreter body (extend env id val)))]
       [(proc-exp var body-exp) (proc-val (make var body-exp env))]
+      #;[(proc-exp2 vars body-exp) (proc-val (make vars body-exp env))]
       [(app-exp rator rand)
        (let ((fun (expression-interpreter rator env))
              (arg (expression-interpreter rand env)))      ; <-- c-b-v 
          (match fun
            [(proc-val f) (apply f arg)]
+           [_ (error "applying to a non-function")]))]
+      [(app-exp2 rator rands)
+       (let ((fun (expression-interpreter rator env))
+             (args (map (lambda (r) (expression-interpreter r env)) rands)))
+         (match fun
+           [(proc-val f) (apply f args)] ; f is a closure ; args is a list of values
            [_ (error "applying to a non-function")]))]))
 
   program-interpreter)
@@ -96,12 +105,20 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; here is a concrete instantiation 
 
+(define (value-at lst i)
+  (if (= i 0)
+      (first lst)
+      (value-at (rest lst) (- i 1))))
+
 ;; ER 
 (define environments-as-closures
   ;; type Environment = Symbol -> Value 
   (environment-representation
    (lambda () (lambda (x) (error 'lookup "not found: ~e" x)))
-   (lambda (e x a) (lambda (y) (if (eq? x y) a (e y))))
+   (lambda (e x a) (lambda (y)
+                     (if (list? x)
+                         (value-at a (index-of x y))
+                         (if (eq? x y) a (e y)))))
    (lambda (e x) (e x))))
 
 (define environments-as-ribcage
@@ -112,7 +129,7 @@
    ;; -> Env
    (lambda () '())
    ;; Env Symbol Value -> Env
-   (lambda (env syms vals) ; list of variagles list of values environment -> environment
+   (lambda (env syms vals) ; list of variables list of values environment -> environment
      (cons (list syms vals) env))
    ;; Env Symbol -> Value 
    (lambda (env sym)
@@ -121,10 +138,34 @@
          (let ((syms    (caar env)) ;; is of type Sym
                (vals    (cadr (car env))) ;; is of type Val
                (env-old (cdr env)))
-           (if (eq? sym syms)
-               vals
-               [ (environment-representation-lookup environments-as-ribcage) env-old sym]
+           (displayln syms)
+           (displayln vals)
+           (if (list? syms)
+               (value-at vals (index-of syms sym))
+               (if (eq? sym syms)
+                   vals
+                   [(environment-representation-lookup environments-as-ribcage) env-old sym])
                ))))))
+
+#;(define environments-as-ribcage
+  ;; type Environment = [Listof [List (Listof Symbol) (Listof Values)]]
+  
+  (environment-representation
+   ;; -> Env
+   (lambda () '())
+   ;; Env (Listof Symbol) (Listof Value) -> Env
+   (lambda (env syms vals) 
+     (cons (list syms vals) env))
+   ;; Env Symbol -> Value 
+   (lambda (env sym)
+     (if (null? env)
+         (error (string-append "no bindings for " (symbol->string sym)))
+         (let ((syms    (caar env)) ;; is of type (Listof Symbol) now
+               (vals    (cadr (car env))) ;; is of type (Listof Value) now
+               (env-old (cdr env)))
+           (if (number? (index-of syms sym))
+               (value-at syms (index-of sym vals))
+               [(environment-representation-lookup environments-as-ribcage) env-old sym]))))))
             
 
 ;; (ER INT -> CR)
@@ -136,8 +177,8 @@
   ;; type Closure = (closure Symbol AST an-environment-representation.Environment 
 
   (closure-representation
-   closure                      ; argument for the `make` parameter
-   (lambda (a-closure argument) ; argument for the `apply` parameter
+   closure                      ; closure-representation-make
+   (lambda (a-closure argument) ; closure-representation-apply
      (match-define (closure parameter body env) a-closure)
      (interpreter body (extend env parameter argument)))))
 
@@ -204,9 +245,27 @@
                                                                    (var-exp 'x)))))) 3)
   (check-equal? (check-val (interpreter (let-exp 'f (proc-exp 'x (diff-exp (var-exp 'x) (const-exp 1)))
                                                  (app-exp (var-exp 'f) (const-exp 42))))) 41)
-  (check-equal? (check-val (interpreter (app-exp (app-exp (proc-exp 'x (var-exp 'x)) (proc-exp 'y (const-exp 10))) (const-exp 0)))) 10))
+  (check-equal? (check-val (interpreter (app-exp (app-exp (proc-exp 'x (var-exp 'x)) (proc-exp 'y (const-exp 10))) (const-exp 0)))) 10)
+  (check-equal? (check-val (interpreter (app-exp2 (proc-exp (list 'x 'y 'z) (var-exp 'x)) (list (const-exp 10) (const-exp 5) (const-exp 0))))) 10)
+  (check-equal? (check-val (interpreter (app-exp2 (proc-exp (list 'x 'y 'z) (diff-exp (var-exp 'x) (var-exp 'y))) (list (const-exp 10) (const-exp 5)))))5)
+)
 
 (make-testsuits one-interpreter "one")
 (make-testsuits another-interpreter "another")
 (make-testsuits weird-interpreter "weird")
 (make-testsuits even-weirder-interpreter "weirder")
+
+
+(check-val (one-interpreter (proc-exp (list 'x 'y) (var-exp 'x)))) 
+(check-val (another-interpreter (proc-exp (list 'x 'y) (var-exp 'x))))
+(check-val (weird-interpreter (proc-exp (list 'x 'y) (var-exp 'x))))
+(check-val (even-weirder-interpreter (proc-exp (list 'x 'y) (var-exp 'x))))
+
+
+(check-val (one-interpreter (app-exp2 (proc-exp (list 'x 'y) (var-exp 'x)) (list (const-exp 55) (const-exp 8)))))
+(check-val (another-interpreter (app-exp2 (proc-exp (list 'x 'y) (var-exp 'x)) (list (const-exp 55) (const-exp 8)))))
+(check-val (weird-interpreter (app-exp2 (proc-exp (list 'x 'y) (var-exp 'x)) (list (const-exp 55) (const-exp 8)))))
+(check-val (even-weirder-interpreter (app-exp2 (proc-exp (list 'x 'y) (var-exp 'x)) (list (const-exp 55) (const-exp 8)))))
+
+#;(check-val (another-interpreter (app-exp2 (proc-exp (list 'x 'y 'z) (var-exp 'x)) (list (const-exp 11) (const-exp 5) (const-exp 0)))))
+
