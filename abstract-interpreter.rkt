@@ -1,7 +1,7 @@
 #lang racket
 
 #;(require expect/rackunit)
-
+(require racket/list)
 ;; ---------------------------------------------------------------------------------------------------
 ;; here is the abstract set up 
 
